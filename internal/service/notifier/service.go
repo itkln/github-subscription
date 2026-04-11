@@ -59,6 +59,7 @@ func NewService(logger *slog.Logger, sender EmailSender, publicURL string) (*Ser
 func (s *Service) SendConfirmation(ctx context.Context, email, repo, token string) error {
 	confirmURL := joinURL(s.publicURL, "/api/confirm/"+token)
 	subject := "Confirm your GitHub release subscription"
+	s.logger.Debug("rendering confirmation email", "email", email, "repo", repo)
 
 	body, err := s.render(s.confirmationTmpl, struct {
 		Repo       string
@@ -84,6 +85,7 @@ func (s *Service) SendConfirmation(ctx context.Context, email, repo, token strin
 func (s *Service) SendReleaseNotification(ctx context.Context, email, repo, tag, token string) error {
 	unsubscribeURL := joinURL(s.publicURL, "/api/unsubscribe/"+token)
 	subject := fmt.Sprintf("New release for %s: %s", repo, tag)
+	s.logger.Debug("rendering release notification email", "email", email, "repo", repo, "tag", tag)
 
 	body, err := s.render(s.releaseTmpl, struct {
 		Repo           string

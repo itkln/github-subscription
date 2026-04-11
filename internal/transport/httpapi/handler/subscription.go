@@ -30,6 +30,7 @@ func NewSubscriptionHandler(service Service, logger *slog.Logger) *SubscriptionH
 
 func (h *SubscriptionHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	var request dto.SubscribeRequest
+	h.logger.Debug("handling subscribe request")
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		h.logger.Error("decode subscribe request failed", "error", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
@@ -54,6 +55,7 @@ func (h *SubscriptionHandler) Subscribe(w http.ResponseWriter, r *http.Request) 
 
 func (h *SubscriptionHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
+	h.logger.Debug("handling confirm request")
 	err := h.service.Confirm(r.Context(), token)
 	switch {
 	case err == nil:
@@ -72,6 +74,7 @@ func (h *SubscriptionHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 
 func (h *SubscriptionHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
+	h.logger.Debug("handling unsubscribe request")
 	err := h.service.Unsubscribe(r.Context(), token)
 	switch {
 	case err == nil:
@@ -90,6 +93,7 @@ func (h *SubscriptionHandler) Unsubscribe(w http.ResponseWriter, r *http.Request
 
 func (h *SubscriptionHandler) List(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
+	h.logger.Debug("handling list subscriptions request", "email", email)
 	subscriptions, err := h.service.ListSubscriptions(r.Context(), email)
 	switch {
 	case err == nil:

@@ -53,6 +53,7 @@ func NewService(
 }
 
 func (s *Service) Subscribe(ctx context.Context, email, repo string) error {
+	s.logger.Debug("starting subscription flow", "email", email, "repo", repo)
 	if !isValidEmail(email) {
 		return ErrInvalidEmail
 	}
@@ -69,6 +70,7 @@ func (s *Service) Subscribe(ctx context.Context, email, repo string) error {
 		return ErrAlreadySubscribed
 	}
 
+	s.logger.Debug("creating subscription record", "email", email, "repo", repo)
 	created, err := s.repository.Create(ctx, subscriptionmodel.CreateParams{
 		Email:            email,
 		Repo:             repo,
@@ -90,6 +92,7 @@ func (s *Service) Subscribe(ctx context.Context, email, repo string) error {
 }
 
 func (s *Service) Confirm(ctx context.Context, token string) error {
+	s.logger.Debug("starting confirmation flow")
 	if token == "" {
 		return ErrInvalidToken
 	}
@@ -117,6 +120,7 @@ func (s *Service) Confirm(ctx context.Context, token string) error {
 }
 
 func (s *Service) Unsubscribe(ctx context.Context, token string) error {
+	s.logger.Debug("starting unsubscribe flow")
 	if token == "" {
 		return ErrInvalidToken
 	}
@@ -144,6 +148,7 @@ func (s *Service) Unsubscribe(ctx context.Context, token string) error {
 }
 
 func (s *Service) ListSubscriptions(ctx context.Context, email string) ([]subscriptionmodel.DBSubscription, error) {
+	s.logger.Debug("starting list subscriptions flow", "email", email)
 	if !isValidEmail(email) {
 		return nil, ErrInvalidEmail
 	}

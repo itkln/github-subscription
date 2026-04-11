@@ -42,6 +42,7 @@ func (s *SMTPSender) SendHTML(ctx context.Context, to, subject, body string) err
 	_ = ctx
 
 	address := net.JoinHostPort(s.cfg.Host, s.cfg.Port)
+	s.logger.Debug("sending html email", "to", to, "subject", subject, "smtp_host", s.cfg.Host, "smtp_port", s.cfg.Port)
 	message := []byte(fmt.Sprintf(
 		"From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
 		s.cfg.From,

@@ -18,6 +18,7 @@ type Config struct {
 	Database      DatabaseConfig
 	PublicBaseURL string
 	SMTP          SMTPConfig
+	LogLevel      string
 }
 
 type DatabaseConfig struct {
@@ -48,6 +49,7 @@ func Load() Config {
 			Password: os.Getenv("SMTP_PASSWORD"),
 			From:     getEnv("SMTP_FROM", defaultSMTPFrom),
 		},
+		LogLevel: getEnv("LOG_LEVEL", "info"),
 	}
 }
 
