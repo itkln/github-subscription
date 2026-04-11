@@ -9,7 +9,6 @@ cmd/
   main.go
 docs/
   swagger.yaml
-  github-subscription.postman_collection.json
 internal/
   app/
   config/
@@ -143,24 +142,3 @@ This starts:
 - the API service
 - PostgreSQL
 - Mailpit for SMTP testing at [http://localhost:8025](http://localhost:8025)
-
-## Postman
-
-Import [docs/github-subscription.postman_collection.json](/Users/itkin/Developer/golang/github-subscription/docs/github-subscription.postman_collection.json)
-into Postman.
-
-Useful variables included in the collection:
-
-- `baseUrl`
-- `email`
-- `repo`
-- `confirmToken`
-- `unsubscribeToken`
-
-Typical flow:
-
-1. Run `Subscribe`.
-2. Open Mailpit and copy the confirmation link token.
-3. Set `confirmToken` and run `Confirm Subscription`.
-4. Run `List Subscriptions`.
-5. Later, set `unsubscribeToken` from an email and run `Unsubscribe`.

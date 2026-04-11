@@ -1,5 +1,5 @@
 services:
-  app:
+  releases-api:
     build:
       context: .
       dockerfile: Dockerfile
