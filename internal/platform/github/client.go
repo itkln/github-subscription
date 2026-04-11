@@ -77,7 +77,7 @@ func (c *Client) RepositoryExists(ctx context.Context, repo string) (bool, error
 	return payload.ID != 0, nil
 }
 
-func (c *Client) getJSON(ctx context.Context, path string, target any) error {
+func (c *Client) getJSON(ctx context.Context, path string, target any) (err error) {
 	if err := c.loadFromCache(ctx, path, target); err == nil {
 		return nil
 	}
@@ -91,7 +91,12 @@ func (c *Client) getJSON(ctx context.Context, path string, target any) error {
 	if err != nil {
 		return fmt.Errorf("do github request: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		closeErr := response.Body.Close()
+		if err == nil && closeErr != nil {
+			err = fmt.Errorf("close github response body: %w", closeErr)
+		}
+	}()
 
 	endpoint := githubEndpointLabel(path)
 	metrics.RecordGitHubRequest(endpoint, response.StatusCode)

@@ -113,7 +113,7 @@ func (r *Repository) DeleteByUnsubscribeToken(ctx context.Context, token string)
 	return ensureRowsAffected(result)
 }
 
-func (r *Repository) ListActiveByEmail(ctx context.Context, email string) ([]subscriptionmodel.DBSubscription, error) {
+func (r *Repository) ListActiveByEmail(ctx context.Context, email string) (_ []subscriptionmodel.DBSubscription, err error) {
 	const query = `
 		SELECT id, email, repo, confirmed, confirm_token, unsubscribe_token, last_seen_tag
 		FROM subscriptions
@@ -125,7 +125,12 @@ func (r *Repository) ListActiveByEmail(ctx context.Context, email string) ([]sub
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		closeErr := rows.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
 
 	subscriptions := make([]subscriptionmodel.DBSubscription, 0)
 	for rows.Next() {
@@ -151,7 +156,7 @@ func (r *Repository) ListActiveByEmail(ctx context.Context, email string) ([]sub
 	return subscriptions, nil
 }
 
-func (r *Repository) ListConfirmed(ctx context.Context) ([]subscriptionmodel.DBSubscription, error) {
+func (r *Repository) ListConfirmed(ctx context.Context) (_ []subscriptionmodel.DBSubscription, err error) {
 	const query = `
 		SELECT id, email, repo, confirmed, confirm_token, unsubscribe_token, last_seen_tag
 		FROM subscriptions
@@ -163,7 +168,12 @@ func (r *Repository) ListConfirmed(ctx context.Context) ([]subscriptionmodel.DBS
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		closeErr := rows.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
 
 	subscriptions := make([]subscriptionmodel.DBSubscription, 0)
 	for rows.Next() {
