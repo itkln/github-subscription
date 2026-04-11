@@ -13,6 +13,7 @@ import (
 	dbbootstrap "github.com/itkln/github-subscription/internal/platform/database"
 	"github.com/itkln/github-subscription/internal/platform/email"
 	"github.com/itkln/github-subscription/internal/platform/github"
+	"github.com/itkln/github-subscription/internal/platform/metrics"
 	subscriptionrepository "github.com/itkln/github-subscription/internal/repository/subscription"
 	notifierservice "github.com/itkln/github-subscription/internal/service/notifier"
 	scannerservice "github.com/itkln/github-subscription/internal/service/scanner"
@@ -22,6 +23,7 @@ import (
 
 func Start(logger *slog.Logger) error {
 	cfg := config.Load()
+	metrics.SetAppUp()
 	logger.Info("application starting", "http_address", cfg.HTTPAddress, "database_driver", cfg.Database.Driver)
 
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

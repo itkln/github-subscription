@@ -7,6 +7,7 @@ import (
 	"time"
 
 	subscriptionmodel "github.com/itkln/github-subscription/internal/model/subscription"
+	"github.com/itkln/github-subscription/internal/platform/metrics"
 	notifier "github.com/itkln/github-subscription/internal/service/notifier"
 )
 
@@ -71,12 +72,14 @@ func (s *Service) runOnce(ctx context.Context) {
 
 	subscriptions, err := s.repository.ListConfirmed(ctx)
 	if err != nil {
+		metrics.RecordScannerCycle("error")
 		s.logger.Error("load confirmed subscriptions failed", "error", err)
 		return
 	}
 
 	repositories := groupSubscriptionsByRepo(subscriptions)
 	if len(repositories) == 0 {
+		metrics.RecordScannerCycle("ok")
 		s.logger.Debug("scanner cycle completed", "subscriptions", 0, "repositories", 0)
 		return
 	}
@@ -84,12 +87,15 @@ func (s *Service) runOnce(ctx context.Context) {
 	for _, group := range repositories {
 		if err := s.processRepository(ctx, group); err != nil {
 			if isRateLimitError(err) {
+				metrics.RecordScannerCycle("rate_limited")
 				s.logRateLimit(err, len(repositories))
-				break
+				s.logger.Debug("scanner cycle completed", "subscriptions", len(subscriptions), "repositories", len(repositories))
+				return
 			}
 		}
 	}
 
+	metrics.RecordScannerCycle("ok")
 	s.logger.Debug("scanner cycle completed", "subscriptions", len(subscriptions), "repositories", len(repositories))
 }
 

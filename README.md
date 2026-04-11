@@ -150,3 +150,14 @@ This starts:
 - the API service
 - PostgreSQL
 - Mailpit for SMTP testing at [http://localhost:8025](http://localhost:8025)
+
+## Metrics
+
+The service exposes Prometheus metrics at `/metrics`.
+
+Included basic indicators:
+- service up gauge
+- HTTP request total and duration
+- scanner cycle total by result
+- GitHub API request total by endpoint and status
+- GitHub rate limit total

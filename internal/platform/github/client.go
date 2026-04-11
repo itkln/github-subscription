@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/itkln/github-subscription/internal/platform/metrics"
 )
 
 const (
@@ -83,14 +85,19 @@ func (c *Client) getJSON(ctx context.Context, path string, target any) error {
 	}
 	defer response.Body.Close()
 
+	endpoint := githubEndpointLabel(path)
+	metrics.RecordGitHubRequest(endpoint, response.StatusCode)
+
 	switch response.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound:
 		return errNotFound
 	case http.StatusTooManyRequests:
+		metrics.RecordGitHubRateLimit()
 		return newRateLimitError(response)
 	case http.StatusForbidden:
 		if response.Header.Get("X-RateLimit-Remaining") == "0" {
+			metrics.RecordGitHubRateLimit()
 			return newRateLimitError(response)
 		}
 
@@ -119,4 +126,13 @@ func (c *Client) newRequest(ctx context.Context, path string) (*http.Request, er
 	}
 
 	return request, nil
+}
+
+func githubEndpointLabel(path string) string {
+	switch {
+	case strings.Contains(path, "/releases"):
+		return "releases"
+	default:
+		return "repository"
+	}
 }
