@@ -101,12 +101,13 @@ without depending on HTTP handlers or SMTP details directly.
 Current monolith flow:
 
 1. Periodically load confirmed subscriptions from the database.
-2. Group or iterate by repository.
-3. Check the latest GitHub release/tag.
+2. Group subscriptions by repository so one scan cycle makes at most one GitHub request per repository.
+3. Check the latest GitHub release/tag sequentially.
 4. Compare with `last_seen_tag`.
 5. If `last_seen_tag` is empty, initialize it without sending an email.
 6. If there is a new release after initialization, call `service/notifier`.
 7. Update `last_seen_tag` after successful notification.
+8. If GitHub rate limiting is hit, stop the current scan cycle early and continue on the next scheduled cycle.
 
 ## Implementation status
 
@@ -143,7 +144,7 @@ docker compose up --build
 
 Configuration now lives in .env. The application loads it for local runs, and Docker Compose uses the same file for container runtime settings.
 
-Use [.env.example](/Users/itkin/Developer/golang/github-subscription/.env.example) as the template for your local `.env`.
+Use .env.example as the template for your local `.env`.
 
 This starts:
 - the API service

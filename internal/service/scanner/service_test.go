@@ -165,6 +165,63 @@ func TestServiceRunOnce(t *testing.T) {
 	}
 }
 
+func TestServiceRunOnceDeduplicatesRepositories(t *testing.T) {
+	t.Parallel()
+
+	repository := &spyRepository{
+		listConfirmedResult: []subscriptionmodel.DBSubscription{
+			{ID: 1, Email: "first@example.com", Repo: "golang/go", Confirmed: true, LastSeenTag: "v1.23.0", UnsubscribeToken: "token-1"},
+			{ID: 2, Email: "second@example.com", Repo: "golang/go", Confirmed: true, LastSeenTag: "v1.23.0", UnsubscribeToken: "token-2"},
+		},
+	}
+	notifier := &spyReleaseSender{}
+	github := &spyGitHubClient{
+		tagByRepo: map[string]string{"golang/go": "v1.24.0"},
+	}
+
+	service := NewService(repository, notifier, github, newTestLogger(), time.Second)
+	service.runOnce(context.Background())
+
+	if github.calls != 1 {
+		t.Fatalf("github calls = %d, want 1", github.calls)
+	}
+	if notifier.calls != 2 {
+		t.Fatalf("notifier calls = %d, want 2", notifier.calls)
+	}
+	if repository.updateCalls != 2 {
+		t.Fatalf("update calls = %d, want 2", repository.updateCalls)
+	}
+}
+
+func TestServiceRunOnceStopsEarlyOnRateLimit(t *testing.T) {
+	t.Parallel()
+
+	repository := &spyRepository{
+		listConfirmedResult: []subscriptionmodel.DBSubscription{
+			{ID: 1, Email: "first@example.com", Repo: "golang/go", Confirmed: true, LastSeenTag: "v1.23.0", UnsubscribeToken: "token-1"},
+			{ID: 2, Email: "second@example.com", Repo: "kubernetes/kubernetes", Confirmed: true, LastSeenTag: "v1.31.0", UnsubscribeToken: "token-2"},
+		},
+	}
+	notifier := &spyReleaseSender{}
+	github := &spyGitHubClient{
+		errByRepo: map[string]error{"golang/go": &stubRateLimitError{retryAfter: time.Minute}},
+		tagByRepo: map[string]string{"kubernetes/kubernetes": "v1.32.0"},
+	}
+
+	service := NewService(repository, notifier, github, newTestLogger(), time.Second)
+	service.runOnce(context.Background())
+
+	if github.calls != 1 {
+		t.Fatalf("github calls = %d, want 1", github.calls)
+	}
+	if notifier.calls != 0 {
+		t.Fatalf("notifier calls = %d, want 0", notifier.calls)
+	}
+	if repository.updateCalls != 0 {
+		t.Fatalf("update calls = %d, want 0", repository.updateCalls)
+	}
+}
+
 type spyRepository struct {
 	listConfirmedResult []subscriptionmodel.DBSubscription
 	listConfirmedErr    error
@@ -218,6 +275,22 @@ func (s *spyGitHubClient) LatestReleaseTag(_ context.Context, repo string) (stri
 		return "", err
 	}
 	return s.tagByRepo[repo], nil
+}
+
+type stubRateLimitError struct {
+	retryAfter time.Duration
+}
+
+func (e *stubRateLimitError) Error() string {
+	return "rate limited"
+}
+
+func (e *stubRateLimitError) IsRateLimit() bool {
+	return true
+}
+
+func (e *stubRateLimitError) RetryAfterDuration() time.Duration {
+	return e.retryAfter
 }
 
 func newTestLogger() *slog.Logger {

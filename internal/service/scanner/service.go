@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -16,6 +17,11 @@ type Repository interface {
 
 type GitHubClient interface {
 	LatestReleaseTag(ctx context.Context, repo string) (string, error)
+}
+
+type rateLimitError interface {
+	IsRateLimit() bool
+	RetryAfterDuration() time.Duration
 }
 
 type Service struct {
@@ -69,25 +75,53 @@ func (s *Service) runOnce(ctx context.Context) {
 		return
 	}
 
-	for _, subscription := range subscriptions {
-		s.processSubscription(ctx, subscription)
+	repositories := groupSubscriptionsByRepo(subscriptions)
+	if len(repositories) == 0 {
+		s.logger.Debug("scanner cycle completed", "subscriptions", 0, "repositories", 0)
+		return
 	}
 
-	s.logger.Debug("scanner cycle completed", "subscriptions", len(subscriptions))
+	for _, group := range repositories {
+		if err := s.processRepository(ctx, group); err != nil {
+			if isRateLimitError(err) {
+				s.logRateLimit(err, len(repositories))
+				break
+			}
+		}
+	}
+
+	s.logger.Debug("scanner cycle completed", "subscriptions", len(subscriptions), "repositories", len(repositories))
 }
 
-func (s *Service) processSubscription(ctx context.Context, subscription subscriptionmodel.DBSubscription) {
-	tag, err := s.github.LatestReleaseTag(ctx, subscription.Repo)
+func (s *Service) processRepository(ctx context.Context, subscriptions []subscriptionmodel.DBSubscription) error {
+	if len(subscriptions) == 0 {
+		return nil
+	}
+
+	repo := subscriptions[0].Repo
+	tag, err := s.github.LatestReleaseTag(ctx, repo)
 	if err != nil {
-		s.logger.Error("fetch latest github release failed", "repo", subscription.Repo, "error", err)
-		return
+		if isRateLimitError(err) {
+			return err
+		}
+
+		s.logger.Error("fetch latest github release failed", "repo", repo, "error", err)
+		return nil
 	}
 
 	if tag == "" {
-		s.logger.Debug("no release found for repository", "repo", subscription.Repo)
-		return
+		s.logger.Debug("no release found for repository", "repo", repo)
+		return nil
 	}
 
+	for _, subscription := range subscriptions {
+		s.processSubscriptionWithTag(ctx, subscription, tag)
+	}
+
+	return nil
+}
+
+func (s *Service) processSubscriptionWithTag(ctx context.Context, subscription subscriptionmodel.DBSubscription, tag string) {
 	if subscription.LastSeenTag == "" {
 		s.logger.Debug("initializing last seen tag", "repo", subscription.Repo, "tag", tag, "subscription_id", subscription.ID)
 		if err := s.repository.UpdateLastSeenTag(ctx, subscription.ID, tag); err != nil {
@@ -112,4 +146,41 @@ func (s *Service) processSubscription(ctx context.Context, subscription subscrip
 	}
 
 	s.logger.Info("new release notification sent", "email", subscription.Email, "repo", subscription.Repo, "tag", tag)
+}
+
+func groupSubscriptionsByRepo(subscriptions []subscriptionmodel.DBSubscription) [][]subscriptionmodel.DBSubscription {
+	grouped := make(map[string][]subscriptionmodel.DBSubscription, len(subscriptions))
+	order := make([]string, 0, len(subscriptions))
+	for _, subscription := range subscriptions {
+		if _, ok := grouped[subscription.Repo]; !ok {
+			order = append(order, subscription.Repo)
+		}
+		grouped[subscription.Repo] = append(grouped[subscription.Repo], subscription)
+	}
+
+	result := make([][]subscriptionmodel.DBSubscription, 0, len(order))
+	for _, repo := range order {
+		result = append(result, grouped[repo])
+	}
+
+	return result
+}
+
+func isRateLimitError(err error) bool {
+	var target rateLimitError
+	return errors.As(err, &target) && target.IsRateLimit()
+}
+
+func (s *Service) logRateLimit(err error, repositories int) {
+	var target rateLimitError
+	if !errors.As(err, &target) {
+		return
+	}
+
+	s.logger.Warn(
+		"github rate limit reached, scanner cycle stopped early",
+		"repositories", repositories,
+		"retry_after", target.RetryAfterDuration().String(),
+		"error", err,
+	)
 }

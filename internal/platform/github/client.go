@@ -15,8 +15,6 @@ const (
 	acceptHeader     = "application/vnd.github+json"
 )
 
-var errNotFound = errors.New("github resource not found")
-
 type releaseResponse struct {
 	TagName string `json:"tag_name"`
 }
@@ -24,6 +22,8 @@ type releaseResponse struct {
 type repositoryResponse struct {
 	ID int64 `json:"id"`
 }
+
+var errNotFound = errors.New("github resource not found")
 
 type Client struct {
 	baseURL    string
@@ -87,6 +87,14 @@ func (c *Client) getJSON(ctx context.Context, path string, target any) error {
 	case http.StatusOK:
 	case http.StatusNotFound:
 		return errNotFound
+	case http.StatusTooManyRequests:
+		return newRateLimitError(response)
+	case http.StatusForbidden:
+		if response.Header.Get("X-RateLimit-Remaining") == "0" {
+			return newRateLimitError(response)
+		}
+
+		return fmt.Errorf("unexpected github status: %s", response.Status)
 	default:
 		return fmt.Errorf("unexpected github status: %s", response.Status)
 	}
