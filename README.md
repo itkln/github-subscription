@@ -9,13 +9,18 @@ cmd/
   main.go
 docs/
   swagger.yaml
+  github-subscription.postman_collection.json
 internal/
   app/
   config/
   model/
   platform/
     database/
+    email/
   repository/
+  service/
+    notifier/
+    subscription/
   transport/
     httpapi/
       dto/
@@ -31,7 +36,92 @@ docker-compose.yml
 - `app`: application bootstrap and HTTP server startup.
 - `config`: runtime HTTP and database configuration.
 - `platform/database`: Postgres bootstrap and `golang-migrate` startup migrations.
+- `platform/email`: SMTP delivery adapter.
 - `repository`: database access for API use cases.
+- `service/notifier`: notification use cases and message composition.
+- `service/subscription`: subscription use cases and API-facing business logic.
+
+## Current logic
+
+### `POST /api/subscribe`
+
+Current intended flow:
+
+1. Decode JSON request from Swagger contract.
+2. Validate email format.
+3. Validate repository format as `owner/repo`.
+4. Check that the `(email, repo)` pair does not already exist.
+5. Generate `confirm_token` and `unsubscribe_token`.
+6. Store the subscription in PostgreSQL as unconfirmed.
+7. Send confirmation email with HTML template and confirmation link.
+8. Return `200` when the subscription is created and the confirmation email is sent.
+
+### `GET /api/confirm/{token}`
+
+Current intended flow:
+
+1. Read confirmation token from path.
+2. Validate that the token is not empty.
+3. Find the subscription by `confirm_token`.
+4. Mark subscription as confirmed.
+5. Return `200` on success, `404` if token does not exist.
+
+### `GET /api/unsubscribe/{token}`
+
+Current intended flow:
+
+1. Read unsubscribe token from path.
+2. Validate that the token is not empty.
+3. Find the subscription by `unsubscribe_token`.
+4. Delete the subscription.
+5. Return `200` on success, `404` if token does not exist.
+
+### `GET /api/subscriptions?email=...`
+
+Current intended flow:
+
+1. Validate email query parameter.
+2. Read all confirmed subscriptions for the email from PostgreSQL.
+3. Return JSON array described in Swagger.
+
+### Notifier flow
+
+The code is organized so notification logic is separate from transport and SMTP:
+
+1. `service/subscription` decides when a notification must be sent.
+2. `service/notifier` builds email subject/body and renders Go HTML templates.
+3. `platform/email` sends the final HTML email using SMTP.
+
+This separation is intentional so a future `scanner` service can reuse `service/notifier`
+without depending on HTTP handlers or SMTP details directly.
+
+### Future scanner flow
+
+Planned monolith flow:
+
+1. Periodically load confirmed subscriptions from the database.
+2. Group or iterate by repository.
+3. Check the latest GitHub release/tag.
+4. Compare with `last_seen_tag`.
+5. If there is a new release, call `service/notifier`.
+6. Update `last_seen_tag` after successful notification.
+
+## Implementation status
+
+Implemented now:
+
+- PostgreSQL persistence for subscriptions
+- startup migrations with `golang-migrate`
+- Docker and `docker-compose.yml` for API + PostgreSQL + Mailpit
+- service split between subscription logic, notifier logic, and SMTP delivery
+- HTML email templates for confirmation and release notifications
+
+Still expected / partially completed:
+
+- GitHub repository existence validation for `POST /api/subscribe`
+- scanner/background release checking service
+- unit tests for subscription and notifier business logic
+- integration tests as an optional improvement
 
 ## Runtime requirements
 
@@ -48,3 +138,29 @@ Use [docker-compose.yml](/Users/itkin/Developer/golang/github-subscription/docke
 ```bash
 docker compose up --build
 ```
+
+This starts:
+- the API service
+- PostgreSQL
+- Mailpit for SMTP testing at [http://localhost:8025](http://localhost:8025)
+
+## Postman
+
+Import [docs/github-subscription.postman_collection.json](/Users/itkin/Developer/golang/github-subscription/docs/github-subscription.postman_collection.json)
+into Postman.
+
+Useful variables included in the collection:
+
+- `baseUrl`
+- `email`
+- `repo`
+- `confirmToken`
+- `unsubscribeToken`
+
+Typical flow:
+
+1. Run `Subscribe`.
+2. Open Mailpit and copy the confirmation link token.
+3. Set `confirmToken` and run `Confirm Subscription`.
+4. Run `List Subscriptions`.
+5. Later, set `unsubscribeToken` from an email and run `Unsubscribe`.

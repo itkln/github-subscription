@@ -6,9 +6,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       HTTP_ADDRESS: ":8080"
       DATABASE_DSN: "postgres://postgres:postgres@db:5432/github_subscription?sslmode=disable"
+      PUBLIC_BASE_URL: "http://localhost:8080"
+      SMTP_HOST: "mailpit"
+      SMTP_PORT: "1025"
+      SMTP_FROM: "noreply@github-subscription.local"
     ports:
       - "8080:8080"
 
@@ -27,6 +33,12 @@ services:
       retries: 10
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  mailpit:
+    image: axllent/mailpit:v1.25
+    ports:
+      - "1025:1025"
+      - "8025:8025"
 
 volumes:
   postgres_data:

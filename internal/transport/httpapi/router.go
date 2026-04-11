@@ -1,14 +1,15 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/itkln/github-subscription/internal/transport/httpapi/handler"
 )
 
-func NewRouter() http.Handler {
+func NewRouter(service handler.Service, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
-	subscriptionHandler := handler.NewSubscriptionHandler()
+	subscriptionHandler := handler.NewSubscriptionHandler(service, logger)
 
 	mux.HandleFunc("POST /api/subscribe", subscriptionHandler.Subscribe)
 	mux.HandleFunc("GET /api/confirm/{token}", subscriptionHandler.Confirm)
