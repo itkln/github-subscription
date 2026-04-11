@@ -19,6 +19,7 @@ internal/
   repository/
   service/
     notifier/
+    scanner/
     subscription/
   transport/
     httpapi/
@@ -38,6 +39,7 @@ docker-compose.yml
 - `platform/email`: SMTP delivery adapter.
 - `repository`: database access for API use cases.
 - `service/notifier`: notification use cases and message composition.
+- `service/scanner`: periodic GitHub release checks for confirmed subscriptions.
 - `service/subscription`: subscription use cases and API-facing business logic.
 
 ## Current logic
@@ -94,16 +96,17 @@ The code is organized so notification logic is separate from transport and SMTP:
 This separation is intentional so a future `scanner` service can reuse `service/notifier`
 without depending on HTTP handlers or SMTP details directly.
 
-### Future scanner flow
+### Scanner flow
 
-Planned monolith flow:
+Current monolith flow:
 
 1. Periodically load confirmed subscriptions from the database.
 2. Group or iterate by repository.
 3. Check the latest GitHub release/tag.
 4. Compare with `last_seen_tag`.
-5. If there is a new release, call `service/notifier`.
-6. Update `last_seen_tag` after successful notification.
+5. If `last_seen_tag` is empty, initialize it without sending an email.
+6. If there is a new release after initialization, call `service/notifier`.
+7. Update `last_seen_tag` after successful notification.
 
 ## Implementation status
 
@@ -113,13 +116,13 @@ Implemented now:
 - startup migrations with `golang-migrate`
 - Docker and `docker-compose.yml` for API + PostgreSQL + Mailpit
 - service split between subscription logic, notifier logic, and SMTP delivery
+- background scanner for confirmed subscriptions and release detection
 - HTML email templates for confirmation and release notifications
+- unit tests for notifier, subscription, and scanner business logic
 
 Still expected / partially completed:
 
 - GitHub repository existence validation for `POST /api/subscribe`
-- scanner/background release checking service
-- unit tests for subscription and notifier business logic
 - integration tests as an optional improvement
 
 ## Runtime requirements

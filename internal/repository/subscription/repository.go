@@ -151,6 +151,60 @@ func (r *Repository) ListActiveByEmail(ctx context.Context, email string) ([]sub
 	return subscriptions, nil
 }
 
+func (r *Repository) ListConfirmed(ctx context.Context) ([]subscriptionmodel.DBSubscription, error) {
+	const query = `
+		SELECT id, email, repo, confirmed, confirm_token, unsubscribe_token, last_seen_tag
+		FROM subscriptions
+		WHERE confirmed = TRUE
+		ORDER BY repo ASC, email ASC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	subscriptions := make([]subscriptionmodel.DBSubscription, 0)
+	for rows.Next() {
+		var subscription subscriptionmodel.DBSubscription
+		if err := rows.Scan(
+			&subscription.ID,
+			&subscription.Email,
+			&subscription.Repo,
+			&subscription.Confirmed,
+			&subscription.ConfirmToken,
+			&subscription.UnsubscribeToken,
+			&subscription.LastSeenTag,
+		); err != nil {
+			return nil, err
+		}
+		subscriptions = append(subscriptions, subscription)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return subscriptions, nil
+}
+
+func (r *Repository) UpdateLastSeenTag(ctx context.Context, id int64, tag string) error {
+	const query = `
+		UPDATE subscriptions
+		SET last_seen_tag = $2,
+		    updated_at = NOW()
+		WHERE id = $1
+	`
+
+	result, err := r.db.ExecContext(ctx, query, id, tag)
+	if err != nil {
+		return err
+	}
+
+	return ensureRowsAffected(result)
+}
+
 func (r *Repository) getOne(ctx context.Context, query, token string) (subscriptionmodel.DBSubscription, error) {
 	var subscription subscriptionmodel.DBSubscription
 	err := r.db.QueryRowContext(ctx, query, token).Scan(

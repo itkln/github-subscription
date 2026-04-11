@@ -9,8 +9,10 @@ import (
 	"github.com/itkln/github-subscription/internal/config"
 	dbbootstrap "github.com/itkln/github-subscription/internal/platform/database"
 	"github.com/itkln/github-subscription/internal/platform/email"
+	"github.com/itkln/github-subscription/internal/platform/github"
 	subscriptionrepository "github.com/itkln/github-subscription/internal/repository/subscription"
 	notifierservice "github.com/itkln/github-subscription/internal/service/notifier"
+	scannerservice "github.com/itkln/github-subscription/internal/service/scanner"
 	subscriptionservice "github.com/itkln/github-subscription/internal/service/subscription"
 	"github.com/itkln/github-subscription/internal/transport/httpapi"
 )
@@ -47,6 +49,15 @@ func Start(logger *slog.Logger) error {
 		logger.Error("notification service initialization failed", "error", err)
 		return err
 	}
+
+	scanInterval, err := time.ParseDuration(cfg.Scanner.Interval)
+	if err != nil {
+		logger.Error("scanner initialization failed", "field", "SCAN_INTERVAL", "value", cfg.Scanner.Interval, "error", err)
+		return err
+	}
+
+	githubClient := github.NewClient(cfg.Scanner.GitHubAPI, cfg.Scanner.Token)
+	scannerService := scannerservice.NewService(subscriptionRepository, notificationService, githubClient, logger, scanInterval)
 	subscriptionService := subscriptionservice.NewService(subscriptionRepository, notificationService, logger)
 
 	server := &http.Server{
@@ -54,6 +65,8 @@ func Start(logger *slog.Logger) error {
 		Handler:           httpapi.NewRouter(subscriptionService, logger),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+
+	go scannerService.Start(context.Background())
 
 	logger.Info("http server listening", "address", cfg.HTTPAddress)
 	return server.ListenAndServe()

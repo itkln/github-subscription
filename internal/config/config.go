@@ -11,6 +11,7 @@ const (
 	defaultSMTPHost      = "localhost"
 	defaultSMTPPort      = "1025"
 	defaultSMTPFrom      = "noreply@github-subscription.local"
+	defaultScanInterval  = "1m"
 )
 
 type Config struct {
@@ -19,6 +20,7 @@ type Config struct {
 	PublicBaseURL string
 	SMTP          SMTPConfig
 	LogLevel      string
+	Scanner       ScannerConfig
 }
 
 type DatabaseConfig struct {
@@ -32,6 +34,12 @@ type SMTPConfig struct {
 	Username string
 	Password string
 	From     string
+}
+
+type ScannerConfig struct {
+	Interval  string
+	GitHubAPI string
+	Token     string
 }
 
 func Load() Config {
@@ -50,6 +58,11 @@ func Load() Config {
 			From:     getEnv("SMTP_FROM", defaultSMTPFrom),
 		},
 		LogLevel: getEnv("LOG_LEVEL", "info"),
+		Scanner: ScannerConfig{
+			Interval:  getEnv("SCAN_INTERVAL", defaultScanInterval),
+			GitHubAPI: getEnv("GITHUB_API_BASE_URL", "https://api.github.com"),
+			Token:     os.Getenv("GITHUB_TOKEN"),
+		},
 	}
 }
 
