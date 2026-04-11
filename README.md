@@ -123,10 +123,10 @@ Implemented now:
 - background scanner for confirmed subscriptions and release detection
 - HTML email templates for confirmation and release notifications
 - unit tests for notifier, subscription, and scanner business logic
+- GitHub Actions CI pipeline for linting and tests on each push
 
 Still expected / partially completed:
 
-- GitHub repository existence validation for `POST /api/subscribe`
 - integration tests as an optional improvement
 
 ## Runtime requirements
@@ -186,3 +186,11 @@ Notes:
 - `endpoint="repository"` represents repository existence checks during subscription creation
 - `endpoint="releases"` represents release checks performed by the scanner
 - `/metrics` does not show a per-request log of GitHub calls; for request-by-request visibility, use application logs
+
+## CI
+
+GitHub Actions CI is defined in [.github/workflows/ci.yml](/Users/itkin/Developer/golang/github-subscription/.github/workflows/ci.yml).
+
+On every push it runs:
+- `golangci-lint`
+- `go test ./...`
