@@ -189,7 +189,7 @@ Notes:
 
 ## CI
 
-GitHub Actions CI is defined in [.github/workflows/ci.yml](/Users/itkin/Developer/golang/github-subscription/.github/workflows/ci.yml).
+GitHub Actions CI is defined in `.github/workflows/ci.yml`.
 
 On every push it runs:
 - `golangci-lint`
