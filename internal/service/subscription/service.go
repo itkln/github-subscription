@@ -11,7 +11,7 @@ import (
 	"regexp"
 
 	subscriptionmodel "github.com/itkln/github-subscription/internal/model/subscription"
-	notifierservice "github.com/itkln/github-subscription/internal/service/notifier"
+	"github.com/itkln/github-subscription/internal/service/notifier"
 )
 
 var (
@@ -24,12 +24,6 @@ var (
 
 var repoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
-type Service struct {
-	repository Repository
-	notifier   notifierservice.ConfirmationSender
-	logger     *slog.Logger
-}
-
 type Repository interface {
 	Create(ctx context.Context, params subscriptionmodel.CreateParams) (subscriptionmodel.DBSubscription, error)
 	ExistsByEmailAndRepo(ctx context.Context, email, repo string) (bool, error)
@@ -40,9 +34,15 @@ type Repository interface {
 	ListActiveByEmail(ctx context.Context, email string) ([]subscriptionmodel.DBSubscription, error)
 }
 
+type Service struct {
+	repository Repository
+	notifier   notifier.ConfirmationSender
+	logger     *slog.Logger
+}
+
 func NewService(
 	repository Repository,
-	notifier notifierservice.ConfirmationSender,
+	notifier notifier.ConfirmationSender,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
