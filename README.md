@@ -161,3 +161,10 @@ Included basic indicators:
 - scanner cycle total by result
 - GitHub API request total by endpoint and status
 - GitHub rate limit total
+
+Notes:
+- metrics are cumulative counters and gauges for the current process lifetime
+- outbound GitHub calls appear as aggregated Prometheus series such as `github_subscription_github_requests_total{endpoint="releases",status="200"}`
+- `endpoint="repository"` represents repository existence checks during subscription creation
+- `endpoint="releases"` represents release checks performed by the scanner
+- `/metrics` does not show a per-request log of GitHub calls; for request-by-request visibility, use application logs
