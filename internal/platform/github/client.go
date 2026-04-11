@@ -29,14 +29,18 @@ var errNotFound = errors.New("github resource not found")
 
 type Client struct {
 	baseURL    string
+	cache      Cache
+	cacheTTL   time.Duration
 	token      string
 	httpClient *http.Client
 }
 
-func NewClient(baseURL, token string) *Client {
+func NewClient(baseURL, token string, cache Cache, cacheTTL time.Duration) *Client {
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		token:   token,
+		baseURL:  strings.TrimRight(baseURL, "/"),
+		cache:    cache,
+		cacheTTL: cacheTTL,
+		token:    token,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -74,6 +78,10 @@ func (c *Client) RepositoryExists(ctx context.Context, repo string) (bool, error
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, target any) error {
+	if err := c.loadFromCache(ctx, path, target); err == nil {
+		return nil
+	}
+
 	request, err := c.newRequest(ctx, path)
 	if err != nil {
 		return err
@@ -110,6 +118,8 @@ func (c *Client) getJSON(ctx context.Context, path string, target any) error {
 		return fmt.Errorf("decode github response: %w", err)
 	}
 
+	_ = c.storeInCache(ctx, path, target)
+
 	return nil
 }
 
@@ -135,4 +145,38 @@ func githubEndpointLabel(path string) string {
 	default:
 		return "repository"
 	}
+}
+
+func (c *Client) loadFromCache(ctx context.Context, path string, target any) error {
+	if c.cache == nil {
+		return errCacheMiss
+	}
+
+	value, err := c.cache.Get(ctx, cacheKey(path))
+	if err != nil {
+		return errCacheMiss
+	}
+
+	if err := json.Unmarshal([]byte(value), target); err != nil {
+		return fmt.Errorf("unmarshal github cache: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) storeInCache(ctx context.Context, path string, value any) error {
+	if c.cache == nil {
+		return nil
+	}
+
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("marshal github cache: %w", err)
+	}
+
+	if err := c.cache.Set(ctx, cacheKey(path), string(payload), c.cacheTTL); err != nil {
+		return err
+	}
+
+	return nil
 }

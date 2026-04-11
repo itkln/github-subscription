@@ -3,8 +3,10 @@ package config
 import (
 	"bufio"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -22,6 +24,7 @@ type Config struct {
 	Database      DatabaseConfig
 	PublicBaseURL string
 	SMTP          SMTPConfig
+	Redis         RedisConfig
 	LogLevel      string
 	Scanner       ScannerConfig
 }
@@ -37,6 +40,13 @@ type SMTPConfig struct {
 	Username string
 	Password string
 	From     string
+}
+
+type RedisConfig struct {
+	Addr     string
+	DB       int
+	TTL      time.Duration
+	Password string
 }
 
 type ScannerConfig struct {
@@ -66,6 +76,12 @@ func Load() Config {
 			Password: os.Getenv("SMTP_PASSWORD"),
 			From:     getEnv("SMTP_FROM", defaultSMTPFrom),
 		},
+		Redis: RedisConfig{
+			Addr:     getEnv("REDIS_ADDR", "localhost:6379"),
+			Password: os.Getenv("REDIS_PASSWORD"),
+			DB:       getEnvInt("REDIS_DB", 0),
+			TTL:      getEnvDuration("GITHUB_CACHE_TTL", 10*time.Minute),
+		},
 		LogLevel: getEnv("LOG_LEVEL", "info"),
 		Scanner: ScannerConfig{
 			Interval:  getEnv("SCAN_INTERVAL", defaultScanInterval),
@@ -73,6 +89,34 @@ func Load() Config {
 			Token:     os.Getenv("GITHUB_TOKEN"),
 		},
 	}
+}
+
+func getEnvInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
 }
 
 func getEnv(key, fallback string) string {

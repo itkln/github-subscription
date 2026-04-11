@@ -14,6 +14,7 @@ internal/
   config/
   model/
   platform/
+    cache/
     database/
     email/
   repository/
@@ -36,6 +37,7 @@ docker-compose.yml
 - `app`: application bootstrap and HTTP server startup.
 - `config`: runtime HTTP and database configuration.
 - `platform/database`: Postgres bootstrap and `golang-migrate` startup migrations.
+- `platform/cache`: Redis adapter used for GitHub response caching.
 - `platform/email`: SMTP delivery adapter.
 - `repository`: database access for API use cases.
 - `service/notifier`: notification use cases and message composition.
@@ -116,6 +118,7 @@ Implemented now:
 - PostgreSQL persistence for subscriptions
 - startup migrations with `golang-migrate`
 - Docker and `docker-compose.yml` for API + PostgreSQL + Mailpit
+- Redis caching for GitHub API responses with a 10 minute TTL
 - service split between subscription logic, notifier logic, and SMTP delivery
 - background scanner for confirmed subscriptions and release detection
 - HTML email templates for confirmation and release notifications
@@ -149,7 +152,22 @@ Use .env.example as the template for your local `.env`.
 This starts:
 - the API service
 - PostgreSQL
+- Redis for GitHub response caching
 - Mailpit for SMTP testing at [http://localhost:8025](http://localhost:8025)
+
+## GitHub Cache
+
+GitHub API responses are cached in Redis with a TTL of 10 minutes.
+
+Cached operations:
+- repository existence checks during subscription creation
+- latest release lookups used by the scanner
+
+Relevant settings:
+- `REDIS_ADDR`
+- `REDIS_PASSWORD`
+- `REDIS_DB`
+- `GITHUB_CACHE_TTL`
 
 ## Metrics
 

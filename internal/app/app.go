@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/itkln/github-subscription/internal/config"
+	"github.com/itkln/github-subscription/internal/platform/cache"
 	dbbootstrap "github.com/itkln/github-subscription/internal/platform/database"
 	"github.com/itkln/github-subscription/internal/platform/email"
 	"github.com/itkln/github-subscription/internal/platform/github"
@@ -51,6 +52,17 @@ func Start(logger *slog.Logger) error {
 	}()
 
 	subscriptionRepository := subscriptionrepository.NewRepository(db)
+	redisCache := cache.NewRedis(cfg.Redis)
+	if err := redisCache.Ping(initCtx); err != nil {
+		logger.Error("redis initialization failed", "error", err)
+		return err
+	}
+	defer func() {
+		if err := redisCache.Close(); err != nil {
+			logger.Warn("redis close failed", "error", err)
+		}
+	}()
+
 	smtpSender := email.NewSMTPSender(logger, cfg.SMTP)
 	notificationService, err := notifierservice.NewService(logger, smtpSender, cfg.PublicBaseURL)
 	if err != nil {
@@ -64,7 +76,7 @@ func Start(logger *slog.Logger) error {
 		return err
 	}
 
-	githubClient := github.NewClient(cfg.Scanner.GitHubAPI, cfg.Scanner.Token)
+	githubClient := github.NewClient(cfg.Scanner.GitHubAPI, cfg.Scanner.Token, redisCache, cfg.Redis.TTL)
 	scannerService := scannerservice.NewService(subscriptionRepository, notificationService, githubClient, logger, scanInterval)
 	subscriptionService := subscriptionservice.NewService(subscriptionRepository, notificationService, githubClient, logger)
 
