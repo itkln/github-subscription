@@ -8,26 +8,24 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+    env_file:
+      - .env
     environment:
-      HTTP_ADDRESS: ":8080"
-      DATABASE_DSN: "postgres://postgres:postgres@db:5432/github_subscription?sslmode=disable"
-      PUBLIC_BASE_URL: "http://localhost:8080"
-      SMTP_HOST: "mailpit"
-      SMTP_PORT: "1025"
-      SMTP_FROM: "noreply@github-subscription.local"
+      DATABASE_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-github_subscription}?sslmode=disable
+      SMTP_HOST: mailpit
     ports:
       - "8080:8080"
 
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: github_subscription
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-github_subscription}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d github_subscription"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-github_subscription}"]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -44,6 +44,9 @@ func (h *SubscriptionHandler) Subscribe(w http.ResponseWriter, r *http.Request) 
 	case errors.Is(err, subscriptionservice.ErrInvalidEmail), errors.Is(err, subscriptionservice.ErrInvalidRepo):
 		h.logger.Error("subscribe request validation failed", "email", request.Email, "repo", request.Repo, "error", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	case errors.Is(err, subscriptionservice.ErrRepoNotFound):
+		h.logger.Error("subscribe repository not found", "email", request.Email, "repo", request.Repo, "error", err)
+		http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 	case errors.Is(err, subscriptionservice.ErrAlreadySubscribed):
 		h.logger.Error("subscribe request conflicted", "email", request.Email, "repo", request.Repo, "error", err)
 		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)

@@ -1,7 +1,10 @@
 package config
 
 import (
+	"bufio"
 	"os"
+	"strings"
+	"sync"
 )
 
 const (
@@ -42,7 +45,13 @@ type ScannerConfig struct {
 	Token     string
 }
 
+var loadDotenvOnce sync.Once
+
 func Load() Config {
+	loadDotenvOnce.Do(func() {
+		loadDotenv(".env")
+	})
+
 	return Config{
 		HTTPAddress: getEnv("HTTP_ADDRESS", defaultHTTPAddress),
 		Database: DatabaseConfig{
@@ -72,4 +81,33 @@ func getEnv(key, fallback string) string {
 	}
 
 	return fallback
+}
+
+func loadDotenv(path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+
+		key = strings.TrimSpace(key)
+		if key == "" || os.Getenv(key) != "" {
+			continue
+		}
+
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		_ = os.Setenv(key, value)
+	}
 }

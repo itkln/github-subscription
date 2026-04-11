@@ -141,6 +141,10 @@ Use [docker-compose.yml](/Users/itkin/Developer/golang/github-subscription/docke
 docker compose up --build
 ```
 
+Configuration now lives in .env. The application loads it for local runs, and Docker Compose uses the same file for container runtime settings.
+
+Use [.env.example](/Users/itkin/Developer/golang/github-subscription/.env.example) as the template for your local `.env`.
+
 This starts:
 - the API service
 - PostgreSQL

@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/itkln/github-subscription/internal/service/notifier"
 	"io"
 	"log/slog"
 	"strings"
 	"testing"
 
 	subscriptionmodel "github.com/itkln/github-subscription/internal/model/subscription"
+	"github.com/itkln/github-subscription/internal/service/notifier"
 )
 
 func TestServiceSubscribe(t *testing.T) {
@@ -22,24 +22,49 @@ func TestServiceSubscribe(t *testing.T) {
 		repo          string
 		repository    *spyRepository
 		notifier      *spyConfirmationSender
+		repoChecker   *spyRepoChecker
 		wantErr       error
-		assertionFunc func(t *testing.T, repo *spyRepository, notifier *spyConfirmationSender)
+		assertionFunc func(t *testing.T, repo *spyRepository, notifier *spyConfirmationSender, repoChecker *spyRepoChecker)
 	}{
 		{
-			name:       "returns invalid email error",
-			email:      "bad-email",
+			name:        "returns invalid email error",
+			email:       "bad-email",
+			repo:        "golang/go",
+			repository:  &spyRepository{},
+			notifier:    &spyConfirmationSender{},
+			repoChecker: &spyRepoChecker{},
+			wantErr:     ErrInvalidEmail,
+		},
+		{
+			name:        "returns invalid repo error",
+			email:       "user@example.com",
+			repo:        "bad repo",
+			repository:  &spyRepository{},
+			notifier:    &spyConfirmationSender{},
+			repoChecker: &spyRepoChecker{},
+			wantErr:     ErrInvalidRepo,
+		},
+		{
+			name:       "returns repo not found error",
+			email:      "user@example.com",
 			repo:       "golang/go",
 			repository: &spyRepository{},
 			notifier:   &spyConfirmationSender{},
-			wantErr:    ErrInvalidEmail,
+			repoChecker: &spyRepoChecker{
+				exists: false,
+			},
+			wantErr: ErrRepoNotFound,
 		},
 		{
-			name:       "returns invalid repo error",
+			name:       "propagates github repository check error",
 			email:      "user@example.com",
-			repo:       "bad repo",
+			repo:       "golang/go",
 			repository: &spyRepository{},
 			notifier:   &spyConfirmationSender{},
-			wantErr:    ErrInvalidRepo,
+			repoChecker: &spyRepoChecker{
+				err: errors.New("github failed"),
+			},
+			wantErr: errors.New("github failed"),
 		},
 		{
 			name:  "returns already subscribed error",
@@ -49,7 +74,10 @@ func TestServiceSubscribe(t *testing.T) {
 				exists: true,
 			},
 			notifier: &spyConfirmationSender{},
-			wantErr:  ErrAlreadySubscribed,
+			repoChecker: &spyRepoChecker{
+				exists: true,
+			},
+			wantErr: ErrAlreadySubscribed,
 		},
 		{
 			name:  "propagates repository exists error",
@@ -59,7 +87,10 @@ func TestServiceSubscribe(t *testing.T) {
 				existsErr: errors.New("exists failed"),
 			},
 			notifier: &spyConfirmationSender{},
-			wantErr:  errors.New("exists failed"),
+			repoChecker: &spyRepoChecker{
+				exists: true,
+			},
+			wantErr: errors.New("exists failed"),
 		},
 		{
 			name:  "propagates create error",
@@ -69,7 +100,10 @@ func TestServiceSubscribe(t *testing.T) {
 				createErr: errors.New("create failed"),
 			},
 			notifier: &spyConfirmationSender{},
-			wantErr:  errors.New("create failed"),
+			repoChecker: &spyRepoChecker{
+				exists: true,
+			},
+			wantErr: errors.New("create failed"),
 		},
 		{
 			name:  "propagates notifier error",
@@ -84,6 +118,9 @@ func TestServiceSubscribe(t *testing.T) {
 			},
 			notifier: &spyConfirmationSender{
 				err: errors.New("notify failed"),
+			},
+			repoChecker: &spyRepoChecker{
+				exists: true,
 			},
 			wantErr: errors.New("notify failed"),
 		},
@@ -102,9 +139,18 @@ func TestServiceSubscribe(t *testing.T) {
 				},
 			},
 			notifier: &spyConfirmationSender{},
-			assertionFunc: func(t *testing.T, repo *spyRepository, notifier *spyConfirmationSender) {
+			repoChecker: &spyRepoChecker{
+				exists: true,
+			},
+			assertionFunc: func(t *testing.T, repo *spyRepository, notifier *spyConfirmationSender, repoChecker *spyRepoChecker) {
 				t.Helper()
 
+				if repoChecker.calls != 1 {
+					t.Fatalf("repoChecker calls = %d, want 1", repoChecker.calls)
+				}
+				if repoChecker.repo != "golang/go" {
+					t.Fatalf("checked repo = %q, want %q", repoChecker.repo, "golang/go")
+				}
 				if repo.existsCalls != 1 {
 					t.Fatalf("existsCalls = %d, want 1", repo.existsCalls)
 				}
@@ -148,7 +194,7 @@ func TestServiceSubscribe(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			service := newTestService(tc.repository, tc.notifier)
+			service := newTestService(tc.repository, tc.notifier, tc.repoChecker)
 			err := service.Subscribe(context.Background(), tc.email, tc.repo)
 
 			if tc.wantErr == nil && err != nil {
@@ -159,7 +205,7 @@ func TestServiceSubscribe(t *testing.T) {
 			}
 
 			if tc.assertionFunc != nil {
-				tc.assertionFunc(t, tc.repository, tc.notifier)
+				tc.assertionFunc(t, tc.repository, tc.notifier, tc.repoChecker)
 			}
 		})
 	}
@@ -229,7 +275,7 @@ func TestServiceConfirm(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := newTestService(tc.repository, &spyConfirmationSender{}).Confirm(context.Background(), tc.token)
+			err := newTestService(tc.repository, &spyConfirmationSender{}, &spyRepoChecker{}).Confirm(context.Background(), tc.token)
 			if tc.wantErr == nil && err != nil {
 				t.Fatalf("Confirm() unexpected error = %v", err)
 			}
@@ -307,7 +353,7 @@ func TestServiceUnsubscribe(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := newTestService(tc.repository, &spyConfirmationSender{}).Unsubscribe(context.Background(), tc.token)
+			err := newTestService(tc.repository, &spyConfirmationSender{}, &spyRepoChecker{}).Unsubscribe(context.Background(), tc.token)
 			if tc.wantErr == nil && err != nil {
 				t.Fatalf("Unsubscribe() unexpected error = %v", err)
 			}
@@ -363,7 +409,7 @@ func TestServiceListSubscriptions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := newTestService(tc.repository, &spyConfirmationSender{}).ListSubscriptions(context.Background(), tc.email)
+			got, err := newTestService(tc.repository, &spyConfirmationSender{}, &spyRepoChecker{}).ListSubscriptions(context.Background(), tc.email)
 			if tc.wantErr == nil && err != nil {
 				t.Fatalf("ListSubscriptions() unexpected error = %v", err)
 			}
@@ -475,8 +521,25 @@ func (s *spyConfirmationSender) SendConfirmation(_ context.Context, email, repo,
 	return s.err
 }
 
-func newTestService(repository Repository, notifier notifier.ConfirmationSender) *Service {
-	return NewService(repository, notifier, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+type spyRepoChecker struct {
+	calls  int
+	repo   string
+	exists bool
+	err    error
+}
+
+func (s *spyRepoChecker) RepositoryExists(_ context.Context, repo string) (bool, error) {
+	s.calls++
+	s.repo = repo
+	if s.err != nil {
+		return false, s.err
+	}
+
+	return s.exists, nil
+}
+
+func newTestService(repository Repository, notifier notifier.ConfirmationSender, repoChecker RepoChecker) *Service {
+	return NewService(repository, notifier, repoChecker, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 }
 
 func errorMatches(got, want error) bool {

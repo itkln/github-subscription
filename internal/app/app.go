@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/itkln/github-subscription/internal/config"
@@ -21,15 +24,18 @@ func Start(logger *slog.Logger) error {
 	cfg := config.Load()
 	logger.Info("application starting", "http_address", cfg.HTTPAddress, "database_driver", cfg.Database.Driver)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	initCtx, cancel := context.WithTimeout(rootCtx, 15*time.Second)
 	defer cancel()
 
-	if err := dbbootstrap.Migrate(ctx, cfg.Database, logger); err != nil {
+	if err := dbbootstrap.Migrate(initCtx, cfg.Database, logger); err != nil {
 		logger.Error("database initialization failed", "stage", "migrate", "error", err)
 		return err
 	}
 
-	db, err := dbbootstrap.Open(ctx, cfg.Database, logger)
+	db, err := dbbootstrap.Open(initCtx, cfg.Database, logger)
 	if err != nil {
 		logger.Error("database initialization failed", "stage", "open", "error", err)
 		return err
@@ -58,7 +64,7 @@ func Start(logger *slog.Logger) error {
 
 	githubClient := github.NewClient(cfg.Scanner.GitHubAPI, cfg.Scanner.Token)
 	scannerService := scannerservice.NewService(subscriptionRepository, notificationService, githubClient, logger, scanInterval)
-	subscriptionService := subscriptionservice.NewService(subscriptionRepository, notificationService, logger)
+	subscriptionService := subscriptionservice.NewService(subscriptionRepository, notificationService, githubClient, logger)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
@@ -66,8 +72,34 @@ func Start(logger *slog.Logger) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	go scannerService.Start(context.Background())
+	go scannerService.Start(rootCtx)
 
 	logger.Info("http server listening", "address", cfg.HTTPAddress)
-	return server.ListenAndServe()
+	serverErrCh := make(chan error, 1)
+	go func() {
+		serverErrCh <- server.ListenAndServe()
+	}()
+
+	select {
+	case <-rootCtx.Done():
+		logger.Info("shutdown signal received")
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			logger.Error("http server shutdown failed", "error", err)
+			return err
+		}
+
+		logger.Info("http server shutdown completed")
+		return nil
+	case err := <-serverErrCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("http server stopped with error", "error", err)
+			return err
+		}
+
+		return nil
+	}
 }

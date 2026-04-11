@@ -19,6 +19,7 @@ var (
 	ErrInvalidRepo       = errors.New("invalid repo")
 	ErrInvalidToken      = errors.New("invalid token")
 	ErrAlreadySubscribed = errors.New("already subscribed")
+	ErrRepoNotFound      = errors.New("repo not found")
 	ErrNotFound          = errors.New("not found")
 )
 
@@ -34,21 +35,28 @@ type Repository interface {
 	ListActiveByEmail(ctx context.Context, email string) ([]subscriptionmodel.DBSubscription, error)
 }
 
+type RepoChecker interface {
+	RepositoryExists(ctx context.Context, repo string) (bool, error)
+}
+
 type Service struct {
-	repository Repository
-	notifier   notifier.ConfirmationSender
-	logger     *slog.Logger
+	repository  Repository
+	notifier    notifier.ConfirmationSender
+	repoChecker RepoChecker
+	logger      *slog.Logger
 }
 
 func NewService(
 	repository Repository,
 	notifier notifier.ConfirmationSender,
+	repoChecker RepoChecker,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
-		repository: repository,
-		notifier:   notifier,
-		logger:     logger,
+		repository:  repository,
+		notifier:    notifier,
+		repoChecker: repoChecker,
+		logger:      logger,
 	}
 }
 
@@ -59,6 +67,15 @@ func (s *Service) Subscribe(ctx context.Context, email, repo string) error {
 	}
 	if !repoPattern.MatchString(repo) {
 		return ErrInvalidRepo
+	}
+
+	existsOnGitHub, err := s.repoChecker.RepositoryExists(ctx, repo)
+	if err != nil {
+		s.logger.Error("check github repository existence failed", "repo", repo, "error", err)
+		return err
+	}
+	if !existsOnGitHub {
+		return ErrRepoNotFound
 	}
 
 	exists, err := s.repository.ExistsByEmailAndRepo(ctx, email, repo)
